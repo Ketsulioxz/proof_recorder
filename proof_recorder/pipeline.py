@@ -330,14 +330,75 @@ def _stage_yandex(run: _Run) -> bool:
     if not point:
         return run.problem("ссылка пропала из выдачи до клика")
     run.log(f"[*] Навожу курсор на ссылку в выдаче ({point[0]}, {point[1]}) и кликаю...")
-    clicked = _click_to_mirror(run, page, "serp", "ссылка в выдаче", point, metrics,
-                               refind_args={"domain": domain},
-                               transition_shot=SHOT_1)
+    clicked = _click_to_mirror(
+        run,
+        page,
+        "serp",
+        "ссылка в выдаче",
+        point,
+        metrics,
+        refind_args={"domain": domain},
+        transition_shot=SHOT_1,
+    )
+
     if not clicked:
         return False
+
+    # Сначала выясняем, куда реально пришёл браузер.
+    # Это нужно сделать ДО ошибки по Screenshot_1, потому что быстрый
+    # серверный редирект может сразу отправить нас на чужой сайт.
+    run.log("[*] Проверяю конечный адрес после перехода...")
+
+    try:
+        run.final_url = _settle_url(run.target_page, run.log)
+    except Exception as e:
+        return run.problem(
+            f"не удалось определить конечный адрес после перехода: "
+            f"{type(e).__name__}"
+        )
+
+    if not run.final_url:
+        try:
+            run.final_url = run.target_page.url or ""
+        except Exception:
+            run.final_url = ""
+
+    run.log(f"[i] Конечный адрес после перехода: {run.final_url}")
+
+    src = bot.extract_domain(run.url)
+    dst = bot.extract_domain(run.final_url)
+
+    if not dst:
+        return run.problem(
+            "после клика не удалось определить конечный домен"
+        )
+
+    # Если вообще остались на Яндексе — это не переход на зеркало.
+    if "yandex." in dst or dst == "ya.ru":
+        return run.problem(
+            "клик по выдаче никуда не увёл — остались на Яндексе"
+        )
+
+    # Если после стабилизации всё ещё исходный домен,
+    # значит зеркало пока не получено.
+    if _same_site(src, dst):
+        return run.problem(
+            f"перехода на зеркало не произошло — остались на {dst}"
+        )
+
+    # Ключевая новая проверка:
+    # если конечный домен не относится к разрешённым брендам/зеркалам,
+    # сразу прекращаем прогон.
+    if not _final_url_brand_ok(run):
+        return False
+
+    # Только после проверки конечного сайта требуем Screenshot_1.
     if not run.transition_shot_ok:
-        return run.problem("не удалось снять Screenshot_1: наша ссылка не открылась "
-                           "как страница (похоже, серверный редирект сразу на зеркало)")
+        return run.problem(
+            "не удалось снять Screenshot_1: наша ссылка не открылась "
+            "как страница (похоже, серверный редирект сразу на зеркало)"
+        )
+
     return True
 
 
@@ -536,6 +597,51 @@ _MIRROR_BRAND_JS = r"""() => {
     return out.join(' | ').slice(0, 3000);
 }"""
 
+def _final_url_brand_ok(run: _Run) -> bool:
+    final_url = (run.final_url or "").strip()
+    domain = bot.extract_domain(final_url)
+
+    if not domain:
+        return run.problem(
+            "конечная ссылка не содержит корректного домена"
+        )
+
+    # Сначала проверяем обычные матчеры наших брендов:
+    # 1xBet, Melbet, CatCasino, Mostbet, Pinco, Vavada, 1xCasino.
+    brand = brand_for_url(final_url)
+    if brand != UNKNOWN_BRAND_FOLDER:
+        run.log(
+            f"[+] Финальный домен соответствует нашему бренду: "
+            f"{brand} ({domain})"
+        )
+        return True
+
+    # Некоторые рабочие зеркала имеют обфусцированные домены,
+    # поэтому дополнительно используем существующий allowlist зеркал из bot.py.
+    try:
+        approved_mirror = bool(
+            bot._looks_like_real_mirror(final_url)
+        )
+    except Exception as e:
+        run.log(
+            f"[!] Не удалось проверить финальный домен "
+            f"по списку зеркал ({type(e).__name__})"
+        )
+        approved_mirror = False
+
+    if approved_mirror:
+        run.log(
+            f"[+] Финальный домен найден в списке "
+            f"разрешённых зеркал: {domain}"
+        )
+        return True
+
+    return run.problem(
+        f"конечная ссылка ведёт на неподдерживаемый "
+        f"бренд/домен: {domain}"
+    )
+
+
 
 def _mirror_brand_ok(run: _Run) -> bool:
     try:
@@ -594,6 +700,9 @@ def _settle_on_mirror(run: _Run) -> bool:
         if not _has_content(health):
             _report_empty_page(health, "Зеркало", run.log)
             return run.problem("зеркало не отрисовалось — пустая страница")
+
+    if not _final_url_brand_ok(run):
+        return False
 
     if not _mirror_brand_ok(run):
         return False
