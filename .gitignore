@@ -1,0 +1,38 @@
+# ── Модель «белого списка» ────────────────────────────────────────────────────
+# Папка Parser содержит и парсер, и рабочие данные, и СЕКРЕТЫ (прокси с
+# логином/паролем, профили браузера с куками). Поэтому по умолчанию игнорируем
+# ВСЁ, а затем точечно разрешаем только файлы, нужные для проекта proof_recorder.
+# Так ничего лишнего не попадёт в коммит даже случайно.
+
+# 1) Игнорируем всё в корне.
+/*
+
+# 2) Разрешаем только нужные файлы/папки standalone-набора.
+!/.gitignore
+!/requirements.txt
+!/run_proof_recorder.py
+!/ProofRecorder.spec
+!/bot.py
+!/bruteforce.py
+!/fast_dns.py
+!/proof_recorder/
+
+# 3) Внутри proof_recorder оставляем ТОЛЬКО код — данные и секреты прячем.
+proof_recorder/.browser_profile*/
+proof_recorder/proxy_config.json
+proof_recorder/proof_settings.json
+proof_recorder/cookies.json
+proof_recorder/_debug_transition/
+
+# Секрет парсера — ключ Yandex Search API (bot.py читает его отсюда).
+/yandex_api.json
+
+# 4) Питоновский и сборочный мусор.
+__pycache__/
+*.pyc
+*.pyo
+build/
+dist/
+*.egg-info/
+.venv/
+.idea/

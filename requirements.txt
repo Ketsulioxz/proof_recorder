@@ -1,0 +1,25 @@
+# proof_recorder — зависимости (версии из рабочего окружения).
+
+# Обязательные:
+requests==2.34.2
+playwright==1.60.0
+openpyxl==3.1.5
+
+# Опциональные — без них часть функций молча отключается (см. флаги *_OK в
+# proof_recorder/_compat.py): без них не будет записи/сжатия видео, скриншотов
+# через mss, сжатия PNG, работы с окнами/курсором Windows и управления
+# процессами браузера.
+imageio-ffmpeg==0.6.0    # запись и сжатие видео
+mss==10.2.0              # скриншоты экрана
+pyoxipng==9.1.1          # сжатие PNG без потерь
+pywin32==312             # окна и курсор (только Windows)
+psutil==7.2.2            # процессы браузера
+
+# Нужно ТОЛЬКО парсеру (bot.py тянет их в try/except как замену playwright и
+# requests ради анти-детекта); для proof_recorder не обязательны:
+# patchright==1.61.2
+# curl_cffi
+# yandex_ai_studio_sdk
+
+# После установки playwright один раз выполнить:
+#   playwright install chromium
